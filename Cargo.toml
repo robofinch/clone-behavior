@@ -16,8 +16,14 @@ license      = "MIT OR Apache-2.0"
 [dependencies]
 
 
+[features]
+default = ["std"]
+std     = ["alloc"]
+alloc   = []
+
+
 # Out of the lints that do anything (non-deprecated clippy lints, non-migration rust lints),
-# AFAICT there are 38 left at the "allow" level :)
+# AFAICT there are 36 left at the "allow" level :)
 [lints.rust]
 # Note: I basically went through every allow-by-default lint, and am linting against
 # almost everything, except lints just related to migrating to Edition 2018, 2021, or 2024;
@@ -179,9 +185,6 @@ shadow_reuse                        = "allow"
 shadow_same                         = "allow"
 single_call_fn                      = "allow"
 single_char_lifetime_names          = "allow"
-# Would only make sense in a #[no_std] crate
-std_instead_of_alloc                = "allow"
-std_instead_of_core                 = "allow"
 question_mark_used                  = "allow"
 # This is covered by the `unwrap_used` lint, and seems to be more annoying to `#[expect]`.
 unwrap_in_result                    = "allow"
