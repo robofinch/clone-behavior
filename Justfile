@@ -71,4 +71,4 @@ clippy *args:
     cargo {{plus-msrv}} hack clippy --feature-powerset {{args}}
 
 [group("on-save")]
-on-save: (check "--message-format=json") (clippy "--message-format=json")
+on-save: (clippy "--message-format=json")
