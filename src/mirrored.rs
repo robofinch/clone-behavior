@@ -2,7 +2,7 @@
 #![warn(clippy::missing_inline_in_public_items, reason = "almost everything is very short")]
 
 use crate::call_varargs_macro;
-use crate::speed::{Speed, NearInstant, ConstantTime, LogTime, AnySpeed};
+use crate::speed::{Fast, FastSpeed, MaybeSlow, Speed};
 
 
 /// Get clones that share all semantically-important mutable state.
@@ -17,6 +17,8 @@ use crate::speed::{Speed, NearInstant, ConstantTime, LogTime, AnySpeed};
 ///
 /// Per-clone mutable data is permissible, so long as the effects of mutating that data do not
 /// cause mirrored clones to behave differently in a potentially-observable way.
+/// Clones of types like `Option<T>` or `u32` are not considered to be mirrored clones, as
+/// counterexamples.
 ///
 /// # Exceptions
 /// - A type implementing `MirroredClone` may specify that certain methods or accesses are not
@@ -42,15 +44,28 @@ pub trait MirroredClone<S: Speed>: Sized {
     /// addresses.
     ///
     /// Read [`MirroredClone`] for more.
+    #[inline]
+    #[must_use]
+    fn fast_mirrored_clone(&self) -> Self where S: FastSpeed {
+        self.mirrored_clone()
+    }
+
+    /// Get a clone that shares all semantically-important mutable state with its source.
+    ///
+    /// The goal is that mutating one mirrored clone affects every clone. Different mirrored clones
+    /// should, from their public interfaces, act identically, with some exceptions like memory
+    /// addresses.
+    ///
+    /// Read [`MirroredClone`] for more.
     #[must_use]
     fn mirrored_clone(&self) -> Self;
 }
 
 
-macro_rules! non_recursive_near_instant {
+macro_rules! non_recursive_fast {
     ($($({for $($bounds:tt)+})? $type:ty),* $(,)?) => {
         $(
-            impl<$($($bounds)+)?> MirroredClone<NearInstant> for $type {
+            impl<S: Speed, $($($bounds)+)?> MirroredClone<S> for $type {
                 #[inline]
                 fn mirrored_clone(&self) -> Self {
                     self.clone()
@@ -60,9 +75,8 @@ macro_rules! non_recursive_near_instant {
     };
 }
 
-non_recursive_near_instant! {
+non_recursive_fast! {
     (),
-    core::convert::Infallible,
     {for T} core::iter::Empty<T>,
     {for T: ?Sized} core::marker::PhantomData<T>,
     core::marker::PhantomPinned,
@@ -93,7 +107,7 @@ refcounted!(
 
 macro_rules! function {
     ($($args:ident),*) => {
-        impl<R, $($args),*> MirroredClone<NearInstant> for fn($($args),*) -> R {
+        impl<S: Speed, R, $($args),*> MirroredClone<S> for fn($($args),*) -> R {
             #[inline]
             fn mirrored_clone(&self) -> Self {
                 *self
@@ -150,26 +164,19 @@ macro_rules! make_tuple_macro {
     };
 }
 
-make_tuple_macro!(tuple_constant, ConstantTime, $);
-make_tuple_macro!(tuple_log, LogTime, $);
-make_tuple_macro!(tuple_any, AnySpeed, $);
+make_tuple_macro!(tuple_fast, Fast, $);
+make_tuple_macro!(tuple_slow, MaybeSlow, $);
 
-call_varargs_macro!(tuple_constant);
-call_varargs_macro!(tuple_log);
-call_varargs_macro!(tuple_any);
+call_varargs_macro!(tuple_fast);
+call_varargs_macro!(tuple_slow);
 
-impl<S: Speed, T: MirroredClone<S>> MirroredClone<S> for Option<T> {
-    #[inline]
+impl<S: Speed> MirroredClone<S> for core::convert::Infallible {
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        clippy::uninhabited_references,
+        reason = "this is unreachable",
+    )]
     fn mirrored_clone(&self) -> Self {
-        self.as_ref().map(T::mirrored_clone)
-    }
-}
-
-impl<S: Speed, T: MirroredClone<S>, E: MirroredClone<S>> MirroredClone<S> for Result<T, E> {
-    #[inline]
-    fn mirrored_clone(&self) -> Self {
-        self.as_ref()
-            .map(T::mirrored_clone)
-            .map_err(E::mirrored_clone)
+        *self
     }
 }

@@ -26,20 +26,15 @@ extern crate alloc;
 
 mod speed;
 
-mod independent;
+mod deep;
 mod mirrored;
-mod mixed;
-
-mod blanket_impls;
 
 
 pub use self::{
-    blanket_impls::NonRecursive,
-    independent::IndependentClone,
+    deep::DeepClone,
     mirrored::MirroredClone,
-    mixed::MixedClone,
 };
-pub use self::speed::{Speed, NearInstant, ConstantTime, LogTime, AnySpeed};
+pub use self::speed::{Fast, FastSpeed, MaybeSlow, Speed};
 
 
 macro_rules! call_varargs_macro {

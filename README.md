@@ -2,11 +2,9 @@
 <h1> Clone Behavior </h1>
 </div>
 
-This is a stub, with the bare minimum that I need right now to bound the semantic behavior
-of clones, as I do not wish to go on a yak-shaving sidequest at the moment.
+Bound the semantic behavior and time complexity of cloning a value.
 
-A proper version of this crate will have documentation and provide a derive macro.
-
+A future version of this crate might provide a derive macro if there is interest.
 
 ## License
 

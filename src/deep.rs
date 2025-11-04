@@ -2,17 +2,17 @@
 #![warn(clippy::missing_inline_in_public_items, reason = "almost everything is very short")]
 
 use crate::call_varargs_macro;
-use crate::speed::{Speed, NearInstant, ConstantTime, LogTime, AnySpeed};
+use crate::speed::{Fast, FastSpeed, MaybeSlow, Speed};
 
 
 /// Get deep clones of a value, which do not share any semantically-important mutable state.
 ///
-/// The goal is that the independent clone and its source appear to act completely independently,
+/// The goal is that the clones and their source appear to act completely independently,
 /// at least from their public interfaces; mutating or dropping one clone (among possible actions)
 /// should have no potentially-observable effect on any other independent clone.
 ///
-/// Note also that an independent clone and its source may reference the same immutable data, even
-/// if the public interface of the type could be used to confirm that two independent clones are
+/// Note also that a deep clone and its source may reference the same immutable data, even
+/// if the public interface of the type could be used to confirm that two deep clones are
 /// (or were) associated. (However, there should not be a way for either the source or any
 /// independent clone to affect that data's value or address in memory.)
 ///
@@ -20,7 +20,7 @@ use crate::speed::{Speed, NearInstant, ConstantTime, LogTime, AnySpeed};
 /// clones, not cryptographic-quality guarantees about how those deep clones are performed.
 ///
 /// # Exceptions
-/// - A type implementing `IndependentClone` may specify that certain methods or accesses are not
+/// - A type implementing `DeepClone` may specify that certain methods or accesses are not
 ///   subject to these guarantees.
 /// - `Debug` should be assumed to be an exception. Intentionally worsening the life of someone
 ///   debugging your type is not a goal.
@@ -40,26 +40,38 @@ use crate::speed::{Speed, NearInstant, ConstantTime, LogTime, AnySpeed};
 ///   it, then the reference count used to determine that is shared mutable state. This can be
 ///   avoided by simply giving the new independent clone an unique owned copy of the data, as
 ///   should likely be done anyway.
-pub trait IndependentClone<S: Speed>: Sized {
+pub trait DeepClone<S: Speed>: Sized {
     /// Get a deep clone of a value, which does not share any semantically-important mutable state.
     ///
-    /// The goal is that the independent clone and its source appear to act completely
-    /// independently, at least from their public interfaces; mutating or dropping one clone (among
-    /// possible actions) should have no potentially-observable effect on any other independent
-    /// clone.
+    /// The goal is that the clone and its source appear to act completely independently, at least
+    /// from their public interfaces; mutating or dropping one clone (among possible actions)
+    /// should have no potentially-observable effect on any other deep clone.
     ///
-    /// Read [`IndependentClone`] for more.
+    /// Read [`DeepClone`] for more.
+    #[inline]
     #[must_use]
-    fn independent_clone(&self) -> Self;
+    fn fast_deep_clone(&self) -> Self where S: FastSpeed {
+        self.deep_clone()
+    }
+
+    /// Get a deep clone of a value, which does not share any semantically-important mutable state.
+    ///
+    /// The goal is that the clone and its source appear to act completely independently, at least
+    /// from their public interfaces; mutating or dropping one clone (among possible actions)
+    /// should have no potentially-observable effect on any other deep clone.
+    ///
+    /// Read [`DeepClone`] for more.
+    #[must_use]
+    fn deep_clone(&self) -> Self;
 }
 
 
 macro_rules! impl_copy {
     ($($types:ty),*) => {
         $(
-            impl IndependentClone<NearInstant> for $types {
+            impl<S: Speed> DeepClone<S> for $types {
                 #[inline]
-                fn independent_clone(&self) -> Self {
+                fn deep_clone(&self) -> Self {
                     *self
                 }
             }
@@ -80,12 +92,12 @@ int_impls!(
     u8, u16, u32, u64, u128, usize,
 );
 
-macro_rules! non_recursive_near_instant {
+macro_rules! non_recursive_fast {
     ($($({for $($bounds:tt)+})? $type:ty),* $(,)?) => {
         $(
-            impl<$($($bounds)+)?> IndependentClone<NearInstant> for $type {
+            impl<S: Speed, $($($bounds)+)?> DeepClone<S> for $type {
                 #[inline]
-                fn independent_clone(&self) -> Self {
+                fn deep_clone(&self) -> Self {
                     self.clone()
                 }
             }
@@ -93,12 +105,11 @@ macro_rules! non_recursive_near_instant {
     };
 }
 
-non_recursive_near_instant! {
+non_recursive_fast! {
     f32, f64, bool, char, (),
     core::alloc::Layout,
     core::any::TypeId,
     core::cmp::Ordering,
-    core::convert::Infallible,
     {for T} core::iter::Empty<T>,
     {for T: ?Sized} core::marker::PhantomData<T>,
     core::marker::PhantomPinned,
@@ -109,7 +120,7 @@ non_recursive_near_instant! {
 }
 
 #[cfg(feature = "std")]
-non_recursive_near_instant! {
+non_recursive_fast! {
     std::time::Instant,
     std::thread::ThreadId,
 }
@@ -118,9 +129,9 @@ macro_rules! atomic {
     ($($name:ident $bits:literal),* $(,)?) => {
         $(
             #[cfg(target_has_atomic = $bits)]
-            impl IndependentClone<NearInstant> for core::sync::atomic::$name {
+            impl<S: Speed> DeepClone<S> for core::sync::atomic::$name {
                 #[inline]
-                fn independent_clone(&self) -> Self {
+                fn deep_clone(&self) -> Self {
                     Self::new(self.load(core::sync::atomic::Ordering::Relaxed))
                 }
             }
@@ -139,9 +150,9 @@ atomic! {
 
 macro_rules! function {
     ($($args:ident),*) => {
-        impl<R, $($args),*> IndependentClone<NearInstant> for fn($($args),*) -> R {
+        impl<S: Speed, R, $($args),*> DeepClone<S> for fn($($args),*) -> R {
             #[inline]
-            fn independent_clone(&self) -> Self {
+            fn deep_clone(&self) -> Self {
                 *self
             }
         }
@@ -155,18 +166,18 @@ macro_rules! make_tuple_macro {
     ($name:ident, $speed:ident, $dollar:tt) => {
         macro_rules! $name {
             ($dollar($dollar args:ident),+) => {
-                impl<$dollar($dollar args: IndependentClone<$speed>),+> IndependentClone<$speed>
+                impl<$dollar($dollar args: DeepClone<$speed>),+> DeepClone<$speed>
                 for ($dollar($dollar args,)+)
                 {
                     #[inline]
-                    fn independent_clone(&self) -> Self {
+                    fn deep_clone(&self) -> Self {
                         #[expect(
                             non_snake_case,
                             reason = "using `Tn` as the variable of type `Tn`",
                         )]
                         let ($dollar($dollar args,)+) = self;
                         (
-                            $dollar($dollar args.independent_clone(),)+
+                            $dollar($dollar args.deep_clone(),)+
                         )
                     }
                 }
@@ -175,15 +186,13 @@ macro_rules! make_tuple_macro {
     };
 }
 
-make_tuple_macro!(tuple_constant, ConstantTime, $);
-make_tuple_macro!(tuple_log, LogTime, $);
-make_tuple_macro!(tuple_any, AnySpeed, $);
+make_tuple_macro!(tuple_fast, Fast, $);
+make_tuple_macro!(tuple_slow, MaybeSlow, $);
 
-call_varargs_macro!(tuple_constant);
-call_varargs_macro!(tuple_log);
-call_varargs_macro!(tuple_any);
+call_varargs_macro!(tuple_fast);
+call_varargs_macro!(tuple_slow);
 
-macro_rules! constant_or_slower {
+macro_rules! recursive {
     (
         $(
             $(#[$meta:meta])*
@@ -194,41 +203,27 @@ macro_rules! constant_or_slower {
         $(,)?
     ) => {
         $(
-            impl<$($($special_bounds: IndependentClone<ConstantTime>,)* $($bounds)*)?>
-                IndependentClone<ConstantTime>
+            impl<$($($special_bounds: DeepClone<Fast>,)* $($bounds)*)?> DeepClone<Fast>
             for $type
             where
                 $($($where_bounds)*)?
             {
                 $(#[$meta])*
                 #[inline]
-                fn independent_clone(&$self) -> Self {
+                fn deep_clone(&$self) -> Self {
                     $($body)*
                 }
             }
 
-            impl<$($($special_bounds: IndependentClone<LogTime>,)* $($bounds)*)?>
-                IndependentClone<LogTime>
-            for $type
-            where
-                $($($where_bounds)*)?
-            {
-                $(#[$meta])*
-                #[inline]
-                fn independent_clone(&$self) -> Self {
-                    $($body)*
-                }
-            }
 
-            impl<$($($special_bounds: IndependentClone<AnySpeed>,)* $($bounds)*)?>
-                IndependentClone<AnySpeed>
+            impl<$($($special_bounds: DeepClone<MaybeSlow>,)* $($bounds)*)?> DeepClone<MaybeSlow>
             for $type
             where
                 $($($where_bounds)*)?
             {
                 $(#[$meta])*
                 #[inline]
-                fn independent_clone(&$self) -> Self {
+                fn deep_clone(&$self) -> Self {
                     $($body)*
                 }
             }
@@ -236,55 +231,58 @@ macro_rules! constant_or_slower {
     };
 }
 
-constant_or_slower! {
+recursive! {
     {for (T) {T: ?Sized} const N: usize} [T; N] {|self| {
-        self.each_ref().map(T::independent_clone)
+        self.each_ref().map(T::deep_clone)
     }},
     {for (T) {}} Option<T> {|self| {
-        self.as_ref().map(T::independent_clone)
+        self.as_ref().map(T::deep_clone)
     }},
     {for (T E) {}} Result<T, E> {|self| {
         self.as_ref()
-            .map(T::independent_clone)
-            .map_err(E::independent_clone)
+            .map(T::deep_clone)
+            .map_err(E::deep_clone)
     }},
     {for (T) {}} core::mem::ManuallyDrop<T> {|self| {
-        Self::new(T::independent_clone(self))
+        Self::new(T::deep_clone(self))
     }},
     {for (T) {T: Copy}} core::cell::Cell<T> {|self| {
-        Self::new(T::independent_clone(&self.get()))
+        Self::new(T::deep_clone(&self.get()))
     }},
     /// # Panics
     /// Panics if the value is currently mutably borrowed.
     {for (T) {}} core::cell::RefCell<T> {|self| {
-        Self::new(T::independent_clone(&self.borrow()))
+        Self::new(T::deep_clone(&self.borrow()))
     }},
 }
 
 #[cfg(feature = "alloc")]
-constant_or_slower! {
+recursive! {
     {for (T) {T: ?Sized}} alloc::rc::Rc<T> {|self| {
-        Self::new(T::independent_clone(self))
+        Self::new(T::deep_clone(self))
+    }},
+    {for (T) {T:}} alloc::boxed::Box<T> {|self| {
+        Self::new(T::deep_clone(self))
     }},
     {for (T) {T: ?Sized}} core::pin::Pin<alloc::rc::Rc<T>> {|self| {
-        alloc::rc::Rc::pin(T::independent_clone(self))
+        alloc::rc::Rc::pin(T::deep_clone(self))
     }},
     {for (T) {T: ?Sized}} alloc::rc::Weak<T> {|self| {
         if let Some(rc) = self.upgrade() {
-            alloc::rc::Rc::downgrade(&alloc::rc::Rc::new(T::independent_clone(&rc)))
+            alloc::rc::Rc::downgrade(&alloc::rc::Rc::new(T::deep_clone(&rc)))
         } else {
             Self::new()
         }
     }},
     {for (T) {T: ?Sized}} alloc::sync::Arc<T> {|self| {
-        Self::new(T::independent_clone(self))
+        Self::new(T::deep_clone(self))
     }},
     {for (T) {T: ?Sized}} core::pin::Pin<alloc::sync::Arc<T>> {|self| {
-        alloc::sync::Arc::pin(T::independent_clone(self))
+        alloc::sync::Arc::pin(T::deep_clone(self))
     }},
     {for (T) {T: ?Sized}} alloc::sync::Weak<T> {|self| {
         if let Some(arc) = self.upgrade() {
-            alloc::sync::Arc::downgrade(&alloc::sync::Arc::new(T::independent_clone(&arc)))
+            alloc::sync::Arc::downgrade(&alloc::sync::Arc::new(T::deep_clone(&arc)))
         } else {
             Self::new()
         }
@@ -292,13 +290,13 @@ constant_or_slower! {
 }
 
 #[cfg(feature = "std")]
-constant_or_slower! {
+recursive! {
     /// # Panics
     /// Panics if the `RwLock` is poisoned.
     {for (T) {}} std::sync::RwLock<T> {|self| {
         let lock_result: Result<_, std::sync::PoisonError<_>> = self.read();
         #[expect(clippy::unwrap_used, reason = "Unwrapping poison")]
-        Self::new(T::independent_clone(&lock_result.unwrap()))
+        Self::new(T::deep_clone(&lock_result.unwrap()))
     }},
     /// # Panics or Deadlocks
     /// Panics if the `Mutex` is poisoned.
@@ -307,7 +305,7 @@ constant_or_slower! {
     {for (T) {}} std::sync::Mutex<T> {|self| {
         let lock_result: Result<_, std::sync::PoisonError<_>> = self.lock();
         #[expect(clippy::unwrap_used, reason = "Unwrapping poison")]
-        Self::new(T::independent_clone(&lock_result.unwrap()))
+        Self::new(T::deep_clone(&lock_result.unwrap()))
     }},
 }
 
@@ -317,15 +315,15 @@ macro_rules! map_and_collect {
     ($($t:ident $({$($where_bounds:tt)*})? $type:ty),* $(,)?) => {
         $(
             #[cfg(feature = "alloc")]
-            impl<$t: IndependentClone<AnySpeed>> IndependentClone<AnySpeed>
+            impl<$t: DeepClone<MaybeSlow>> DeepClone<MaybeSlow>
             for $type
             where
                 $($($where_bounds)*)?
             {
                 #[inline]
-                fn independent_clone(&self) -> Self {
+                fn deep_clone(&self) -> Self {
                     self.iter()
-                        .map($t::independent_clone)
+                        .map($t::deep_clone)
                         .collect()
                 }
             }
@@ -343,13 +341,13 @@ map_and_collect! {
 }
 
 #[cfg(feature = "alloc")]
-impl<T: IndependentClone<AnySpeed>> IndependentClone<AnySpeed>
+impl<T: DeepClone<MaybeSlow>> DeepClone<MaybeSlow>
 for core::pin::Pin<alloc::boxed::Box<[T]>>
 {
     #[inline]
-    fn independent_clone(&self) -> Self {
+    fn deep_clone(&self) -> Self {
         let new_box = self.iter()
-            .map(T::independent_clone)
+            .map(T::deep_clone)
             .collect::<alloc::boxed::Box<[T]>>();
 
         alloc::boxed::Box::into_pin(new_box)
@@ -357,34 +355,34 @@ for core::pin::Pin<alloc::boxed::Box<[T]>>
 }
 
 #[cfg(feature = "alloc")]
-impl IndependentClone<AnySpeed> for alloc::boxed::Box<str> {
+impl DeepClone<MaybeSlow> for alloc::boxed::Box<str> {
     #[inline]
-    fn independent_clone(&self) -> Self {
+    fn deep_clone(&self) -> Self {
         self.clone()
     }
 }
 
 #[cfg(feature = "alloc")]
-impl IndependentClone<AnySpeed> for core::pin::Pin<alloc::boxed::Box<str>> {
+impl DeepClone<MaybeSlow> for core::pin::Pin<alloc::boxed::Box<str>> {
     #[inline]
-    fn independent_clone(&self) -> Self {
+    fn deep_clone(&self) -> Self {
         self.clone()
     }
 }
 
 #[cfg(feature = "alloc")]
-impl<K, V> IndependentClone<AnySpeed> for alloc::collections::BTreeMap<K, V>
+impl<K, V> DeepClone<MaybeSlow> for alloc::collections::BTreeMap<K, V>
 where
-    K: IndependentClone<AnySpeed> + Ord,
-    V: IndependentClone<AnySpeed>,
+    K: DeepClone<MaybeSlow> + Ord,
+    V: DeepClone<MaybeSlow>,
 {
     #[inline]
-    fn independent_clone(&self) -> Self {
+    fn deep_clone(&self) -> Self {
         self.iter()
             .map(|(key, val)| {
                 (
-                    K::independent_clone(key),
-                    V::independent_clone(val),
+                    K::deep_clone(key),
+                    V::deep_clone(val),
                 )
             })
             .collect()
@@ -392,37 +390,48 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<T, S> IndependentClone<AnySpeed> for std::collections::HashSet<T, S>
+impl<T, S> DeepClone<MaybeSlow> for std::collections::HashSet<T, S>
 where
-    T: IndependentClone<AnySpeed> + Eq + core::hash::Hash,
+    T: DeepClone<MaybeSlow> + Eq + core::hash::Hash,
     S: core::hash::BuildHasher + Default,
 {
     #[inline]
-    fn independent_clone(&self) -> Self {
+    fn deep_clone(&self) -> Self {
         self.iter()
-            .map(T::independent_clone)
+            .map(T::deep_clone)
             .collect()
     }
 }
 
 #[cfg(feature = "std")]
-impl<K, V, S> IndependentClone<AnySpeed> for std::collections::HashMap<K, V, S>
+impl<K, V, S> DeepClone<MaybeSlow> for std::collections::HashMap<K, V, S>
 where
-    K: IndependentClone<AnySpeed> + Eq + core::hash::Hash,
-    V: IndependentClone<AnySpeed>,
+    K: DeepClone<MaybeSlow> + Eq + core::hash::Hash,
+    V: DeepClone<MaybeSlow>,
     S: core::hash::BuildHasher + Default,
 {
     #[inline]
-    fn independent_clone(&self) -> Self {
+    fn deep_clone(&self) -> Self {
         self.iter()
             .map(|(key, val)| {
                 (
-                    K::independent_clone(key),
-                    V::independent_clone(val),
+                    K::deep_clone(key),
+                    V::deep_clone(val),
                 )
             })
             .collect()
     }
 }
 
-// TODO: iterators, other boxed things
+impl<S: Speed> DeepClone<S> for core::convert::Infallible {
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        clippy::uninhabited_references,
+        reason = "this is unreachable",
+    )]
+    fn deep_clone(&self) -> Self {
+        *self
+    }
+}
+
+// TODO: iterators, other pinned things

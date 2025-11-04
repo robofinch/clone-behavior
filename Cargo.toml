@@ -1,12 +1,12 @@
 [package]
 name         = "clone-behavior"
 authors      = ["Finley Huggins"]
-description  = "Describe the semantic behavior and time complexity of cloning a value"
+description  = "Bound the semantic behavior and time complexity of cloning a value"
 readme       = "README.md"
 keywords     = ["clone", "time", "aliasing", "refcount"]
 categories   = ["rust-patterns", "memory-management", "no-std", "no-std::no-alloc"]
-include      = ["Cargo.toml", "src/**/*.rs", "LICENSE-APACHE", "LICENSE-MIT"]
-version      = "0.0.1"
+include      = ["Cargo.toml", "src/**/*.rs", "LICENSE-APACHE", "LICENSE-MIT", "README.md"]
+version      = "0.1.0"
 edition      = "2024"
 rust-version = "1.85"
 repository   = "https://github.com/robofinch/clone-behavior"
