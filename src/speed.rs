@@ -25,9 +25,3 @@ pub trait Speed: Sealed {}
 
 impl Speed for Fast {}
 impl Speed for MaybeSlow {}
-
-
-/// Trait for indicating the overhead and/or time complexity of a cloning operation.
-pub trait FastSpeed: Sealed {}
-
-impl FastSpeed for Fast {}

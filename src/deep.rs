@@ -2,7 +2,7 @@
 #![warn(clippy::missing_inline_in_public_items, reason = "almost everything is very short")]
 
 use crate::call_varargs_macro;
-use crate::speed::{Fast, FastSpeed, MaybeSlow, Speed};
+use crate::speed::{Fast, MaybeSlow, Speed};
 
 
 /// Get deep clones of a value, which do not share any semantically-important mutable state.
@@ -48,21 +48,30 @@ pub trait DeepClone<S: Speed>: Sized {
     /// should have no potentially-observable effect on any other deep clone.
     ///
     /// Read [`DeepClone`] for more.
-    #[inline]
     #[must_use]
-    fn fast_deep_clone(&self) -> Self where S: FastSpeed {
-        self.deep_clone()
-    }
+    fn deep_clone(&self) -> Self;
+}
 
+/// Quickly get deep clones of a value, which do not share any semantically-important mutable state.
+///
+/// See [`DeepClone`] for more.
+pub trait FastDeepClone: DeepClone<Fast> {
     /// Get a deep clone of a value, which does not share any semantically-important mutable state.
     ///
     /// The goal is that the clone and its source appear to act completely independently, at least
     /// from their public interfaces; mutating or dropping one clone (among possible actions)
     /// should have no potentially-observable effect on any other deep clone.
     ///
-    /// Read [`DeepClone`] for more.
+    /// See [`DeepClone`] for more.
     #[must_use]
-    fn deep_clone(&self) -> Self;
+    fn fast_deep_clone(&self) -> Self;
+}
+
+impl<T: DeepClone<Fast>> FastDeepClone for T {
+    #[inline]
+    fn fast_deep_clone(&self) -> Self {
+        self.deep_clone()
+    }
 }
 
 

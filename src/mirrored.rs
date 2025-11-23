@@ -2,7 +2,7 @@
 #![warn(clippy::missing_inline_in_public_items, reason = "almost everything is very short")]
 
 use crate::call_varargs_macro;
-use crate::speed::{Fast, FastSpeed, MaybeSlow, Speed};
+use crate::speed::{Fast, MaybeSlow, Speed};
 
 
 /// Get clones that share all semantically-important mutable state.
@@ -44,21 +44,30 @@ pub trait MirroredClone<S: Speed>: Sized {
     /// addresses.
     ///
     /// Read [`MirroredClone`] for more.
-    #[inline]
     #[must_use]
-    fn fast_mirrored_clone(&self) -> Self where S: FastSpeed {
-        self.mirrored_clone()
-    }
+    fn mirrored_clone(&self) -> Self;
+}
 
+/// Quickly get clones that share all semantically-important mutable state.
+///
+/// See [`MirroredClone`] for more.
+pub trait FastMirroredClone: MirroredClone<Fast> {
     /// Get a clone that shares all semantically-important mutable state with its source.
     ///
     /// The goal is that mutating one mirrored clone affects every clone. Different mirrored clones
     /// should, from their public interfaces, act identically, with some exceptions like memory
     /// addresses.
     ///
-    /// Read [`MirroredClone`] for more.
+    /// See [`MirroredClone`] for more.
     #[must_use]
-    fn mirrored_clone(&self) -> Self;
+    fn fast_mirrored_clone(&self) -> Self;
+}
+
+impl<T: MirroredClone<Fast>> FastMirroredClone for T {
+    #[inline]
+    fn fast_mirrored_clone(&self) -> Self {
+        self.mirrored_clone()
+    }
 }
 
 

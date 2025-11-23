@@ -31,10 +31,10 @@ mod mirrored;
 
 
 pub use self::{
-    deep::DeepClone,
-    mirrored::MirroredClone,
+    deep::{DeepClone, FastDeepClone},
+    mirrored::{FastMirroredClone, MirroredClone},
+    speed::{Fast, MaybeSlow, Speed},
 };
-pub use self::speed::{Fast, FastSpeed, MaybeSlow, Speed};
 
 
 macro_rules! call_varargs_macro {
