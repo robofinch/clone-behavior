@@ -65,8 +65,8 @@ clippy *args:
                 -Wmultiple_supertrait_upcastable \
                 -Wmust_not_suspend \
                 -Wnon_exhaustive_omitted_patterns \
-                -Wsupertrait_item_shadowing_definition \
-                -Wsupertrait_item_shadowing_usage \
+                -Wresolving_to_items_shadowing_supertrait_items \
+                -Wshadowing_supertrait_items \
                 -Wunqualified_local_imports" cargo +nightly hack clippy --feature-powerset {{args}}
     cargo {{plus-msrv}} hack clippy --feature-powerset {{args}}
 

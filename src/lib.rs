@@ -9,12 +9,6 @@
 //! </style>
 #![cfg_attr(doc, doc = include_str!("../README.md"))]
 
-#![expect(
-    missing_copy_implementations,
-    missing_debug_implementations,
-    reason = "The four uninhabited Speed types are what trigger these lints",
-)]
-
 #![no_std]
 
 #[cfg(feature = "std")]

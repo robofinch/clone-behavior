@@ -11,8 +11,10 @@ use self::sealed::Sealed;
 ///
 /// This might be nearly instant, or involve briefly acquiring a lock and performing a few
 /// computations.
+#[derive(Debug, Clone, Copy)]
 pub enum Fast {}
 /// Places no constraints on the speed of a cloning operation.
+#[derive(Debug, Clone, Copy)]
 pub enum MaybeSlow {}
 
 
