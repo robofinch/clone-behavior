@@ -11,6 +11,11 @@ Bound the semantic behavior and time complexity of cloning a value.
 
 A future version of this crate might provide a derive macro if there is interest.
 
+## Conditions for v1.0.0
+
+This crate currently feels relatively stable and complete. A `v1.0.0` release will be made if
+continued usage of `clone-behavior` does not reveal flaws.
+
 ## License
 
 Licensed under either of
